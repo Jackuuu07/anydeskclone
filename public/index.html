@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RemoteLink — Remote Desktop</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&family=DM+Sans:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #060810;
+        --panel: #111827;
+        --border: rgba(99, 179, 237, 0.12);
+        --border-hot: rgba(99, 179, 237, 0.35);
+        --accent: #63b3ed;
+        --accent-dim: rgba(99, 179, 237, 0.18);
+        --green: #34d399;
+        --amber: #fbbf24;
+        --red: #f87171;
+        --text: #e2e8f0;
+        --muted: #64748b;
+        --code-bg: #0a0f1a;
+        --r: 14px;
+      }
+
+      html {
+        height: 100%;
+      }
+      body {
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "DM Sans", sans-serif;
+        overflow-x: hidden;
+      }
+
+      /* Grid background */
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(99, 179, 237, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(99, 179, 237, 0.03) 1px, transparent 1px);
+        background-size: 40px 40px;
+        pointer-events: none;
+        z-index: 0;
+      }
+      body::after {
+        content: "";
+        position: fixed;
+        top: -200px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 900px;
+        height: 500px;
+        background: radial-gradient(
+          ellipse,
+          rgba(99, 179, 237, 0.07) 0%,
+          transparent 70%
+        );
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .app {
+        position: relative;
+        z-index: 1;
+        max-width: 1140px;
+        margin: 0 auto;
+        padding: 48px 24px 80px;
+      }
+
+      /* Header */
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 56px;
+        animation: fadeDown 0.6s ease both;
+      }
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .logo-icon {
+        width: 36px;
+        height: 36px;
+        background: var(--accent);
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        box-shadow: 0 0 18px rgba(99, 179, 237, 0.4);
+      }
+      .logo-name {
+        font-family: "Syne", sans-serif;
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+      }
+      .logo-name span {
+        color: var(--accent);
+      }
+      .header-badge {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--muted);
+        border: 1px solid var(--border);
+        padding: 4px 12px;
+        border-radius: 20px;
+      }
+
+      /* Hero */
+      .hero {
+        text-align: center;
+        margin-bottom: 56px;
+        animation: fadeUp 0.6s 0.1s ease both;
+      }
+      .hero h1 {
+        font-family: "Syne", sans-serif;
+        font-size: clamp(32px, 5vw, 52px);
+        font-weight: 800;
+        letter-spacing: -1.5px;
+        line-height: 1.1;
+        margin-bottom: 14px;
+      }
+      .hero h1 em {
+        font-style: normal;
+        color: var(--accent);
+      }
+      .hero p {
+        color: var(--muted);
+        font-size: 16px;
+        font-weight: 300;
+      }
+
+      /* Panels */
+      .panels {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 28px;
+        animation: fadeUp 0.6s 0.2s ease both;
+      }
+      @media (max-width: 680px) {
+        .panels {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* Card */
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--r);
+        padding: 28px;
+        position: relative;
+        overflow: hidden;
+        transition:
+          border-color 0.3s,
+          box-shadow 0.3s;
+      }
+      .card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          135deg,
+          rgba(99, 179, 237, 0.04),
+          transparent 60%
+        );
+        pointer-events: none;
+      }
+      .card:hover {
+        border-color: var(--border-hot);
+        box-shadow: 0 0 32px rgba(99, 179, 237, 0.08);
+      }
+      .card-label {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 6px;
+        opacity: 0.7;
+      }
+      .card h2 {
+        font-family: "Syne", sans-serif;
+        font-size: 20px;
+        font-weight: 700;
+        margin-bottom: 24px;
+      }
+
+      /* Code box */
+      .code-box {
+        background: var(--code-bg);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 18px 20px;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        min-height: 66px;
+      }
+      .code-value {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 30px;
+        font-weight: 700;
+        letter-spacing: 6px;
+        color: var(--amber);
+        text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+      }
+      .code-value.empty {
+        font-size: 13px;
+        letter-spacing: 1px;
+        color: var(--muted);
+        font-weight: 400;
+      }
+      .copy-btn {
+        background: var(--accent-dim);
+        border: 1px solid var(--border-hot);
+        border-radius: 8px;
+        padding: 8px 10px;
+        cursor: pointer;
+        color: var(--accent);
+        transition:
+          background 0.2s,
+          transform 0.15s;
+        flex-shrink: 0;
+        display: none;
+        place-items: center;
+      }
+      .copy-btn:hover {
+        background: rgba(99, 179, 237, 0.28);
+        transform: scale(1.05);
+      }
+
+      /* Buttons */
+      .btn-row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-family: "DM Sans", sans-serif;
+        font-size: 14px;
+        font-weight: 500;
+        padding: 10px 18px;
+        border-radius: 9px;
+        border: none;
+        cursor: pointer;
+        transition:
+          transform 0.15s,
+          opacity 0.2s;
+        white-space: nowrap;
+      }
+      .btn:hover {
+        opacity: 0.88;
+        transform: translateY(-1px);
+      }
+      .btn:active {
+        transform: scale(0.97);
+      }
+      .btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+        transform: none;
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: #020810;
+      }
+      .btn-screen {
+        background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+        color: white;
+      }
+      .btn-join {
+        background: linear-gradient(135deg, #d97706, #fbbf24);
+        color: #1a0a00;
+        font-weight: 700;
+      }
+
+      /* Input */
+      .input-wrap {
+        position: relative;
+        margin-bottom: 16px;
+      }
+      .input-wrap svg {
+        position: absolute;
+        left: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--muted);
+        pointer-events: none;
+      }
+      input#codeInput {
+        width: 100%;
+        background: var(--code-bg);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px 14px 14px 42px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: 5px;
+        color: var(--text);
+        outline: none;
+        transition:
+          border-color 0.2s,
+          box-shadow 0.2s;
+      }
+      input#codeInput::placeholder {
+        color: var(--muted);
+        font-size: 14px;
+        letter-spacing: 1px;
+        font-weight: 400;
+      }
+      input#codeInput:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(99, 179, 237, 0.12);
+      }
+
+      /* Status bar */
+      .status-bar {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px 20px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 28px;
+        min-height: 52px;
+        animation: fadeUp 0.6s 0.3s ease both;
+      }
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted);
+        flex-shrink: 0;
+        transition: background 0.4s;
+      }
+      .status-dot.connected {
+        background: var(--green);
+        box-shadow: 0 0 8px var(--green);
+        animation: pulse 2s infinite;
+      }
+      .status-dot.pending {
+        background: var(--amber);
+        box-shadow: 0 0 8px var(--amber);
+        animation: pulse 1s infinite;
+      }
+      .status-dot.error {
+        background: var(--red);
+        box-shadow: 0 0 8px var(--red);
+      }
+      #status {
+        font-size: 14px;
+        color: var(--muted);
+      }
+
+      /* Video */
+      .video-wrap {
+        position: relative;
+        border-radius: var(--r);
+        overflow: hidden;
+        border: 1px solid var(--border);
+        background: #020408;
+        animation: fadeUp 0.6s 0.4s ease both;
+        min-height: 200px;
+      }
+      .video-wrap.active {
+        border-color: var(--border-hot);
+        box-shadow: 0 0 40px rgba(99, 179, 237, 0.1);
+      }
+      video#remoteVideo {
+        width: 100%;
+        display: block;
+        cursor: crosshair;
+      }
+
+      .video-placeholder {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        color: var(--muted);
+        pointer-events: none;
+        transition: opacity 0.4s;
+      }
+      .video-placeholder svg {
+        opacity: 0.25;
+      }
+      .video-placeholder p {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 13px;
+        letter-spacing: 1px;
+        opacity: 0.5;
+      }
+      .video-placeholder.hidden {
+        opacity: 0;
+      }
+
+      .video-tag {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        background: rgba(6, 8, 16, 0.8);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 4px 10px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--accent);
+        opacity: 0;
+        transition: opacity 0.3s;
+      }
+      .video-wrap.active .video-tag {
+        opacity: 1;
+      }
+
+      .control-badge {
+        position: absolute;
+        bottom: 14px;
+        left: 14px;
+        background: rgba(52, 211, 153, 0.15);
+        border: 1px solid rgba(52, 211, 153, 0.3);
+        border-radius: 6px;
+        padding: 5px 12px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--green);
+        opacity: 0;
+        transition: opacity 0.3s;
+        pointer-events: none;
+      }
+      .control-badge.show {
+        opacity: 1;
+      }
+
+      /* Toast */
+      .toast {
+        position: fixed;
+        bottom: 32px;
+        left: 50%;
+        transform: translateX(-50%) translateY(20px);
+        background: var(--green);
+        color: #011a0e;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 10px 22px;
+        border-radius: 8px;
+        pointer-events: none;
+        opacity: 0;
+        transition:
+          opacity 0.25s,
+          transform 0.25s;
+        z-index: 100;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+
+      @keyframes fadeDown {
+        from {
+          opacity: 0;
+          transform: translateY(-16px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @keyframes fadeUp {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <div class="logo">
+          <div class="logo-icon">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#020810"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <path d="M8 21h8M12 17v4" />
+            </svg>
+          </div>
+          <span class="logo-name">Remote<span>Link</span></span>
+        </div>
+        <div class="header-badge">v1.0 · WebRTC</div>
+      </header>
+
+      <div class="hero">
+        <h1>Control any screen,<br /><em>from anywhere.</em></h1>
+        <p>Instant remote access over a secure peer-to-peer connection.</p>
+      </div>
+
+      <div class="panels">
+        <!-- HOST -->
+        <div class="card">
+          <div class="card-label">Host</div>
+          <h2>Share Your Screen</h2>
+          <div class="code-box">
+            <span class="code-value empty" id="myCode">— — — — — —</span>
+            <button class="copy-btn" id="copyBtn" title="Copy code">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path
+                  d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                />
+              </svg>
+            </button>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="createBtn">
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 8v8M8 12h8" />
+              </svg>
+              Generate Code
+            </button>
+            <button class="btn btn-screen" id="shareScreenBtn" disabled>
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <path d="M8 21h8M12 17v4" />
+              </svg>
+              Share Screen
+            </button>
+          </div>
+        </div>
+
+        <!-- VIEWER -->
+        <div class="card">
+          <div class="card-label">Viewer</div>
+          <h2>Connect to a Host</h2>
+          <div class="input-wrap">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="2" y="7" width="20" height="14" rx="2" />
+              <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+            </svg>
+            <input
+              id="codeInput"
+              placeholder="Enter 6-digit code"
+              maxlength="6"
+            />
+          </div>
+          <button class="btn btn-join" id="joinBtn">
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+              <polyline points="10 17 15 12 10 7" />
+              <line x1="15" y1="12" x2="3" y2="12" />
+            </svg>
+            Join Session
+          </button>
+        </div>
+      </div>
+
+      <!-- Status -->
+      <div class="status-bar">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="status"
+          >Ready — generate a code to host, or enter one to connect.</span
+        >
+      </div>
+
+      <!-- Video -->
+      <div class="video-wrap" id="videoWrap">
+        <video id="remoteVideo" autoplay playsinline tabindex="0"></video>
+        <div class="video-placeholder" id="placeholder">
+          <svg
+            width="56"
+            height="56"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="2" y="3" width="20" height="14" rx="2" />
+            <path d="M8 21h8M12 17v4" />
+          </svg>
+          <p>no stream connected</p>
+        </div>
+        <div class="video-tag">● LIVE</div>
+        <div class="control-badge" id="controlBadge">⌨ CONTROL MODE ACTIVE</div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
