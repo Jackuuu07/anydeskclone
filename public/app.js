@@ -165,12 +165,28 @@ function getScaledCoords(e) {
   };
 }
 
+// function sendControl(event) {
+//   if (!currentCode || isHost) return;
+//   //   socket.emit("control-event", event);
+//   socket.emit("control-event", {
+//     code: currentCode,
+//     event: event,
+//   });
+// }
+
+
 function sendControl(event) {
-  if (!currentCode || isHost) return;
-  //   socket.emit("control-event", event);
+  console.log("🟢 FRONTEND → sending:", event);
+  console.log("code:", currentCode, "| isHost:", isHost);
+
+  if (!currentCode || isHost) {
+    console.log("❌ BLOCKED in frontend");
+    return;
+  }
+
   socket.emit("control-event", {
     code: currentCode,
-    event: event,
+    event: event
   });
 }
 
@@ -252,13 +268,6 @@ function detachControlListeners() {
 }
 
 // ── Buttons ───────────────────────────────────────────────────
-createBtn.addEventListener("click", () => {
-  isHost = true;
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  socket.emit("register-host", { code });
-  setStatus("⏳ Registering…", "pending");
-});
-
 shareScreenBtn.addEventListener("click", async () => {
   if (!isHost) return;
   try {
@@ -271,13 +280,17 @@ shareScreenBtn.addEventListener("click", async () => {
   }
 });
 
+// joinBtn.addEventListener("click", () => {
+//   const code = codeInput.value.trim();
+//   if (code.length !== 6)
+//     return setStatus("Please enter a 6-digit code", "error");
+//   isHost = false;
+//   socket.emit("join-session", { code });
+//   setStatus("⏳ Connecting…", "pending");
+// });
 joinBtn.addEventListener("click", () => {
-  const code = codeInput.value.trim();
-  if (code.length !== 6)
-    return setStatus("Please enter a 6-digit code", "error");
-  isHost = false;
+  const code = codeInput.value;
   socket.emit("join-session", { code });
-  setStatus("⏳ Connecting…", "pending");
 });
 
 // ── Socket events ─────────────────────────────────────────────
@@ -359,3 +372,22 @@ socket.on("session-ended", ({ message }) => {
   copyBtn.style.display = "none";
   shareScreenBtn.disabled = true;
 });
+
+
+async function fetchHostId() {
+  try {
+    const res = await fetch("/host");
+    const data = await res.json();
+
+    if (data.codes.length > 0) {
+      document.getElementById("myId").innerText = data.codes[0];
+    } else {
+      document.getElementById("myId").innerText = "Start agent first";
+    }
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+// call every 2 seconds
+setInterval(fetchHostId, 2000);

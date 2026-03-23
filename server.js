@@ -16,21 +16,35 @@ const PORT = process.env.PORT || 3000;
 const sessions = {}; // code -> { hostSocketId, viewerSocketId }
 const socketToCode = {}; // socketId -> code
 
+const activeHosts = {}; // code -> true
+
 io.on("connection", (socket) => {
   console.log("🔌 Connected:", socket.id);
 
   // ── Agent/Host registers ──────────────────────────────────────
+  //   socket.on("register-host", ({ code }) => {
+  //     if (!code)
+  //       return socket.emit("register-error", { message: "No code provided" });
+  //     if (sessions[code])
+  //       return socket.emit("register-error", { message: "Code already in use" });
+
+  //     sessions[code] = { hostSocketId: socket.id, viewerSocketId: null };
+  //     socketToCode[socket.id] = code;
+  //     socket.join(code);
+  //     socket.emit("register-success", { code });
+  //     console.log(`🖥️  Host registered | Code: ${code}`);
+  //   });
   socket.on("register-host", ({ code }) => {
-    if (!code)
-      return socket.emit("register-error", { message: "No code provided" });
-    if (sessions[code])
-      return socket.emit("register-error", { message: "Code already in use" });
+    if (!code) return;
 
     sessions[code] = { hostSocketId: socket.id, viewerSocketId: null };
     socketToCode[socket.id] = code;
     socket.join(code);
+
+    activeHosts[code] = true; // ✅ store
+
     socket.emit("register-success", { code });
-    console.log(`🖥️  Host registered | Code: ${code}`);
+    console.log(`🖥️ Host registered | Code: ${code}`);
   });
 
   // ── Viewer joins ──────────────────────────────────────────────
@@ -55,14 +69,14 @@ io.on("connection", (socket) => {
   });
 
   // ── Control events (viewer → host agent) ─────────────────────
-  socket.on("control-event", (event) => {
-    const code = socketToCode[socket.id];
-    console.log("control-event from:", socket.id, "| code:", code); // ← add
-    if (!code) return console.log("DROP: no code"); // ← add
+  socket.on("control-event", ({ code, event }) => {
     const session = sessions[code];
-    console.log("viewerSocketId:", session?.viewerSocketId); // ← add
-    if (!session || socket.id !== session.viewerSocketId)
-      return console.log("DROP: not viewer"); // ← add
+
+    if (!session || socket.id !== session.viewerSocketId) {
+      console.log("❌ Not viewer");
+      return;
+    }
+
     io.to(session.hostSocketId).emit("control-event", event);
   });
 
@@ -120,9 +134,16 @@ io.on("connection", (socket) => {
     }
 
     delete socketToCode[socket.id];
+
+    if (socket.id === session.hostSocketId) {
+      delete activeHosts[code]; // ✅ remove
+    }
   });
 });
 
-server.listen(PORT, () =>
-  console.log(`🚀 Server running on port ${PORT}`)
-);
+app.get("/host", (req, res) => {
+  const codes = Object.keys(activeHosts);
+  res.json({ codes });
+});
+
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
