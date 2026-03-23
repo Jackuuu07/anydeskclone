@@ -50,7 +50,8 @@ const KEY_MAP = {
 };
 
 // ── Socket ────────────────────────────────────────────────────
-const socket = io("https://anydeskclone-iisg.onrender.com", {
+// const socket = io("https://anydeskclone-iisg.onrender.com", {
+const socket = io("http://localhost:3000", {
   reconnection: true,
   reconnectionAttempts: Infinity,
   reconnectionDelay: 2000,
@@ -88,22 +89,26 @@ socket.on("generate-code-for-viewer", () => {
   socket.emit("register-host", { code: currentCode });
 });
 
-socket.on("request-code", () => {
-  waitingViewers.push(socket.id);
+// socket.on("request-code", () => {
+//   waitingViewers.push(socket.id);
 
-  const agentId = agents[0]; // pick first available agent
+//   const agentId = agents[0]; // pick first available agent
 
-  if (agentId) {
-    io.to(agentId).emit("generate-code-for-viewer");
-  } else {
-    socket.emit("error", "No agent available");
-  }
-});
+//   if (agentId) {
+//     io.to(agentId).emit("generate-code-for-viewer");
+//   } else {
+//     socket.emit("error", "No agent available");
+//   }
+// });
 
 socket.on("register-success", ({ code }) => {
   currentCode = code;
-  showCode(code);
-  setStatus("✅ Registered. Click Share Screen when ready.", "connected");
+
+  console.log("\n  ┌──────────────────────────┐");
+  console.log(`  │   CODE :  ${code}         │`);
+  console.log("  └──────────────────────────┘\n");
+
+  log("📋", `Registered | Code: ${code}`);
 });
 
 socket.on("register-error", ({ message }) => {

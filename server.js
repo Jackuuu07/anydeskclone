@@ -18,13 +18,24 @@ const socketToCode = {}; // socketId -> code
 
 let waitingViewers = [];
 
+let agents = [];
+
 io.on("connection", (socket) => {
+  socket.on("agent-ready", () => {
+    agents.push(socket.id);
+  });
+
   // Browser asks for code
   socket.on("request-code", () => {
     waitingViewers.push(socket.id);
 
-    // notify agent
-    io.emit("generate-code-for-viewer");
+    const agentId = agents[0]; // pick available agent
+
+    if (agentId) {
+      io.to(agentId).emit("generate-code-for-viewer"); // ✅ NOT broadcast
+    } else {
+      socket.emit("error", { message: "No agent available" });
+    }
   });
 
   console.log("🔌 Connected:", socket.id);
@@ -32,11 +43,13 @@ io.on("connection", (socket) => {
   // ── Agent/Host registers ──────────────────────────────────────
   socket.on("register-host", ({ code }) => {
     sessions[code] = { hostSocketId: socket.id, viewerSocketId: null };
+    socketToCode[socket.id] = code;
+
     socket.join(code);
 
     socket.emit("register-success", { code });
 
-    // 🔥 send to waiting browser
+    // ✅ correct logic
     const viewerId = waitingViewers.shift();
     if (viewerId) {
       io.to(viewerId).emit("code-generated", { code });
@@ -119,6 +132,9 @@ io.on("connection", (socket) => {
   // ── Disconnect ────────────────────────────────────────────────
   socket.on("disconnect", () => {
     console.log("❌ Disconnected:", socket.id);
+
+    agents = agents.filter((id) => id !== socket.id);
+
     const code = socketToCode[socket.id];
     if (!code) return;
     const session = sessions[code];
