@@ -50,8 +50,8 @@ const KEY_MAP = {
 };
 
 // ── Socket ────────────────────────────────────────────────────
-// const socket = io("https://anydeskclone-iisg.onrender.com", {
-const socket = io("http://localhost:3000", {
+const socket = io("https://anydeskclone-iisg.onrender.com", {
+// const socket = io("http://localhost:3000", {
   reconnection: true,
   reconnectionAttempts: Infinity,
   reconnectionDelay: 2000,
