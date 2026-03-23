@@ -373,7 +373,7 @@
 const SERVER_URL = window.location.hostname === "localhost"
   ? "http://localhost:3000"
   : window.location.origin;
-const socket = io(SERVER_URL);
+const socket = io();
 
 // ── DOM ───────────────────────────────────────────────────────
 const createBtn      = document.getElementById("createBtn");
