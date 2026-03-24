@@ -1,161 +1,148 @@
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
+const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
 
-app.use(express.static("public")); // serve index.html from /public folder
+app.use(express.static(path.join(__dirname, "public")));
 
-const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] },
-});
-
-const PORT = process.env.PORT || 3000;
-
-const sessions = {}; // code -> { hostSocketId, viewerSocketId }
-const socketToCode = {}; // socketId -> code
-
-let waitingViewers = [];
-
-let agents = [];
+// ── State ─────────────────────────────────────────────────────
+// code → { agentId, viewerId }
+const sessions = {};
+// agentSocketId → code
+const agentCodes = {};
+// agentSocketId → browserSocketId waiting for that code
+const agentPendingViewer = {};
 
 io.on("connection", (socket) => {
+  console.log(`🔌 Connected: ${socket.id}`);
+
+  // ── Agent registers itself as available ───────────────────
   socket.on("agent-ready", () => {
-    agents.push(socket.id);
+    socket.isAgent = true;
+    console.log(`🤖 Agent ready: ${socket.id}`);
   });
 
-  // Browser asks for code
+  // ── Browser requests a code (routed to an available agent) ─
   socket.on("request-code", () => {
-    waitingViewers.push(socket.id);
+    const agent = [...io.sockets.sockets.values()].find(
+      (s) => s.isAgent && !agentCodes[s.id]
+    );
 
-    const agentId = agents[0]; // pick available agent
-
-    if (agentId) {
-      io.to(agentId).emit("generate-code-for-viewer"); // ✅ NOT broadcast
-    } else {
-      socket.emit("error", { message: "No agent available" });
+    if (!agent) {
+      socket.emit("code-error", { message: "No agent available right now." });
+      return;
     }
+
+    agentPendingViewer[agent.id] = socket.id;  // remember which browser asked
+    agent.emit("generate-code-for-viewer", { viewerId: socket.id });
   });
 
-  console.log("🔌 Connected:", socket.id);
-
-  // ── Agent/Host registers ──────────────────────────────────────
+  // ── Agent registers a host code ───────────────────────────
   socket.on("register-host", ({ code }) => {
-    sessions[code] = { hostSocketId: socket.id, viewerSocketId: null };
-    socketToCode[socket.id] = code;
-
-    socket.join(code);
-
-    socket.emit("register-success", { code });
-
-    // ✅ correct logic
-    const viewerId = waitingViewers.shift();
-    if (viewerId) {
-      io.to(viewerId).emit("code-generated", { code });
+    if (sessions[code]) {
+      socket.emit("register-error", { message: "Code already in use." });
+      return;
     }
+    sessions[code] = { agentId: socket.id, viewerId: null };
+    agentCodes[socket.id] = code;
+    socket.emit("register-success", { code });
+    console.log(`🖥️  Host registered | Code: ${code}`);
 
-    console.log(`🖥️ Host registered | Code: ${code}`);
+    // ✅ Send the code to the browser that originally clicked "Get Code"
+    const pendingBrowserId = agentPendingViewer[socket.id];
+    if (pendingBrowserId) {
+      const browserSocket = io.sockets.sockets.get(pendingBrowserId);
+      if (browserSocket) browserSocket.emit("code-generated", { code });
+      delete agentPendingViewer[socket.id];
+    }
   });
 
-  // ── Viewer joins ──────────────────────────────────────────────
+  // ── Viewer joins with a code ──────────────────────────────
   socket.on("join-session", ({ code }) => {
     const session = sessions[code];
-    if (!session)
-      return socket.emit("join-error", {
-        message: "Invalid code. Host not found.",
-      });
-    if (session.viewerSocketId)
-      return socket.emit("join-error", {
-        message: "Session already has a viewer.",
-      });
+    if (!session) {
+      socket.emit("join-error", { message: "Invalid code." });
+      return;
+    }
+    if (session.viewerId) {
+      socket.emit("join-error", { message: "Session already in use." });
+      return;
+    }
 
-    session.viewerSocketId = socket.id;
-    socketToCode[socket.id] = code;
-    socket.join(code);
-
+    session.viewerId = socket.id;
+    socket.currentCode = code;
     socket.emit("join-success", { code });
-    io.to(session.hostSocketId).emit("viewer-joined", { viewerId: socket.id });
+
+    const agentSocket = io.sockets.sockets.get(session.agentId);
+    if (agentSocket) agentSocket.emit("viewer-joined", { viewerId: socket.id });
+
     console.log(`👀 Viewer joined | Code: ${code}`);
   });
 
-  // ── Control events (viewer → host agent) ─────────────────────
-  socket.on("control-event", (event) => {
-    const code = socketToCode[socket.id];
-    console.log("🟡 SERVER received:", event);
-    console.log("code:", code, "| socket:", socket.id);
-
-    console.log("control-event from:", socket.id, "| code:", code); // ← add
-
-    if (!code) return console.log("DROP: no code"); // ← add
-
-    const session = sessions[code];
-
-    console.log("viewerSocketId:", session?.viewerSocketId); // ← add
-
-    if (!session || socket.id !== session.viewerSocketId)
-      return console.log("DROP: not viewer"); // ← add
-    io.to(session.hostSocketId).emit("control-event", event);
-  });
-
-  // ── WebRTC signaling ──────────────────────────────────────────
+  // ── WebRTC signaling relay ────────────────────────────────
   socket.on("offer", ({ code, offer }) => {
     const session = sessions[code];
     if (!session) return;
-    const target =
-      socket.id === session.hostSocketId
-        ? session.viewerSocketId
-        : session.hostSocketId;
-    if (target) io.to(target).emit("offer", { offer });
+    const target = io.sockets.sockets.get(session.viewerId);
+    if (target) target.emit("offer", { offer });
   });
 
   socket.on("answer", ({ code, answer }) => {
     const session = sessions[code];
     if (!session) return;
-    const target =
-      socket.id === session.hostSocketId
-        ? session.viewerSocketId
-        : session.hostSocketId;
-    if (target) io.to(target).emit("answer", { answer });
+    const target = io.sockets.sockets.get(session.agentId);
+    if (target) target.emit("answer", { answer });
   });
 
   socket.on("ice-candidate", ({ code, candidate }) => {
     const session = sessions[code];
     if (!session) return;
-    const target =
-      socket.id === session.hostSocketId
-        ? session.viewerSocketId
-        : session.hostSocketId;
-    if (target) io.to(target).emit("ice-candidate", { candidate });
+    const isAgent = agentCodes[socket.id] === code;
+    const targetId = isAgent ? session.viewerId : session.agentId;
+    const target = io.sockets.sockets.get(targetId);
+    if (target) target.emit("ice-candidate", { candidate });
   });
 
-  // ── Disconnect ────────────────────────────────────────────────
-  socket.on("disconnect", () => {
-    console.log("❌ Disconnected:", socket.id);
-
-    agents = agents.filter((id) => id !== socket.id);
-
-    const code = socketToCode[socket.id];
-    if (!code) return;
+  // ── Control events: viewer → agent ────────────────────────
+  socket.on("control-event", (event) => {
+    const code = socket.currentCode;
     const session = sessions[code];
     if (!session) return;
+    const agent = io.sockets.sockets.get(session.agentId);
+    if (agent) agent.emit("control-event", event);
+  });
 
-    if (socket.id === session.hostSocketId) {
-      if (session.viewerSocketId)
-        io.to(session.viewerSocketId).emit("session-ended", {
-          message: "Host disconnected.",
-        });
+  // ── Disconnect cleanup ────────────────────────────────────
+  socket.on("disconnect", () => {
+    console.log(`❌ Disconnected: ${socket.id}`);
+
+    // If agent disconnects
+    const code = agentCodes[socket.id];
+    if (code) {
+      const session = sessions[code];
+      if (session?.viewerId) {
+        const viewer = io.sockets.sockets.get(session.viewerId);
+        if (viewer) viewer.emit("session-ended", { message: "Host disconnected." });
+      }
       delete sessions[code];
-      console.log(`🗑️  Session destroyed: ${code}`);
-    } else if (socket.id === session.viewerSocketId) {
-      io.to(session.hostSocketId).emit("viewer-left", {
-        message: "Viewer disconnected.",
-      });
-      session.viewerSocketId = null;
+      delete agentCodes[socket.id];
     }
 
-    delete socketToCode[socket.id];
+    // If viewer disconnects
+    for (const [code, session] of Object.entries(sessions)) {
+      if (session.viewerId === socket.id) {
+        session.viewerId = null;
+        const agent = io.sockets.sockets.get(session.agentId);
+        if (agent) agent.emit("viewer-left", { message: "Viewer disconnected." });
+        break;
+      }
+    }
   });
 });
 
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

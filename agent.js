@@ -1,5 +1,15 @@
 const io = require("socket.io-client");
 const {
+  RTCPeerConnection,
+  RTCSessionDescription,
+  RTCIceCandidate,
+  nonstandard: { RTCVideoSource },
+} = require("@roamhq/wrtc");
+
+const screenshot = require("screenshot-desktop");
+const sharp = require("sharp");
+
+const {
   mouse,
   keyboard,
   Button,
@@ -8,127 +18,244 @@ const {
   straightTo,
 } = require("@nut-tree-fork/nut-js");
 
-// ── nut.js — instant, no delay ────────────────────────────────
+// ── nut.js config ─────────────────────────────
 mouse.config.mouseSpeed = 9999;
 mouse.config.autoDelayMs = 0;
 keyboard.config.autoDelayMs = 0;
 
-// ── Browser key → nut.js Key ──────────────────────────────────
+// ── Key map ───────────────────────────────────
 const KEY_MAP = {
   Backspace: Key.Backspace,
   Tab: Key.Tab,
   Enter: Key.Return,
   Escape: Key.Escape,
   Delete: Key.Delete,
-  Insert: Key.Insert,
-  Home: Key.Home,
-  End: Key.End,
-  PageUp: Key.PageUp,
-  PageDown: Key.PageDown,
   ArrowLeft: Key.Left,
   ArrowRight: Key.Right,
   ArrowUp: Key.Up,
   ArrowDown: Key.Down,
   " ": Key.Space,
-  CapsLock: Key.CapsLock,
-  F1: Key.F1,
-  F2: Key.F2,
-  F3: Key.F3,
-  F4: Key.F4,
-  F5: Key.F5,
-  F6: Key.F6,
-  F7: Key.F7,
-  F8: Key.F8,
-  F9: Key.F9,
-  F10: Key.F10,
-  F11: Key.F11,
-  F12: Key.F12,
   Control: Key.LeftControl,
   Alt: Key.LeftAlt,
   Shift: Key.LeftShift,
-  Meta: Key.LeftSuper,
 };
 
-// ── Socket ────────────────────────────────────────────────────
-const socket = io("https://anydeskclone-iisg.onrender.com", {
-// const socket = io("http://localhost:3000", {
-  reconnection: true,
-  reconnectionAttempts: Infinity,
-  reconnectionDelay: 2000,
-});
+// ── Socket ────────────────────────────────────
+const SERVER = process.env.SERVER_URL || "http://localhost:3000";
 
+const socket = io(SERVER);
+
+// ── State ─────────────────────────────────────
 let currentCode = null;
+let peerConnection = null;
+let videoSource = null;
+let capturing = false;
 
-let agents = [];
+// ── Utils ─────────────────────────────────────
+function log(icon, msg) {
+  console.log(`[${new Date().toLocaleTimeString()}] ${icon} ${msg}`);
+}
 
 function generateCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-function log(icon, msg) {
-  console.log(`[${new Date().toLocaleTimeString()}] ${icon}  ${msg}`);
+//
+// ──────────────────────────────────────────────
+// 🔥 MANUAL RGBA → I420 CONVERSION (WORKING)
+// ──────────────────────────────────────────────
+//
+function rgbaToI420Manual(rgba, width, height) {
+  const ySize = width * height;
+  const uvWidth = width >> 1;
+  const uvHeight = height >> 1;
+  const uvSize = uvWidth * uvHeight;
+
+  const yPlane = Buffer.allocUnsafe(ySize);
+  const uPlane = Buffer.allocUnsafe(uvSize);
+  const vPlane = Buffer.allocUnsafe(uvSize);
+
+  let yIndex = 0;
+  let uIndex = 0;
+  let vIndex = 0;
+
+  for (let j = 0; j < height; j++) {
+    for (let i = 0; i < width; i++) {
+      const idx = (j * width + i) * 4;
+
+      const r = rgba[idx];
+      const g = rgba[idx + 1];
+      const b = rgba[idx + 2];
+
+      // Y
+      yPlane[yIndex++] =
+        (0.257 * r + 0.504 * g + 0.098 * b + 16) & 0xff;
+
+      // UV (subsampled)
+      if ((j & 1) === 0 && (i & 1) === 0) {
+        uPlane[uIndex++] =
+          (-0.148 * r - 0.291 * g + 0.439 * b + 128) & 0xff;
+
+        vPlane[vIndex++] =
+          (0.439 * r - 0.368 * g - 0.071 * b + 128) & 0xff;
+      }
+    }
+  }
+
+  return Buffer.concat([yPlane, uPlane, vPlane]);
 }
 
-socket.on("agent-ready", () => {
-  agents.push(socket.id);
-});
+//
+// ──────────────────────────────────────────────
+// 🎥 CAPTURE LOOP
+// ──────────────────────────────────────────────
+//
+async function captureLoop() {
+  if (!capturing) return;
 
-// ── Connection ────────────────────────────────────────────────
+  try {
+    const img = await screenshot({ format: "png" });
+
+    const { data, info } = await sharp(img)
+      .resize(1280, 720, { fit: "fill" })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    const w = info.width;
+    const h = info.height;
+
+    if (data.length !== w * h * 4) {
+      console.error("❌ Invalid RGBA frame");
+      return;
+    }
+
+    // 🔥 Convert to I420
+    const i420 = rgbaToI420Manual(data, w, h);
+
+    if (!videoSource) return;
+
+    videoSource.onFrame({
+      width: w,
+      height: h,
+      data: i420,
+    });
+
+  } catch (err) {
+    console.error("💥 Capture error:", err.message);
+  }
+
+  if (capturing) {
+    setTimeout(captureLoop, 1000 / 15);
+  }
+}
+
+function startCapture() {
+  if (capturing) return;
+  capturing = true;
+  log("🎥", "Screen capture started");
+  captureLoop();
+}
+
+function stopCapture() {
+  capturing = false;
+  log("🛑", "Capture stopped");
+}
+
+//
+// ──────────────────────────────────────────────
+// 🌐 WebRTC SETUP
+// ──────────────────────────────────────────────
+//
+async function setupWebRTC() {
+  if (peerConnection) {
+    peerConnection.close();
+    peerConnection = null;
+  }
+
+  peerConnection = new RTCPeerConnection({
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  });
+
+  videoSource = new RTCVideoSource();
+  const track = videoSource.createTrack();
+  peerConnection.addTrack(track);
+
+  peerConnection.onicecandidate = ({ candidate }) => {
+    if (candidate && currentCode) {
+      socket.emit("ice-candidate", { code: currentCode, candidate });
+    }
+  };
+
+  startCapture();
+
+  const offer = await peerConnection.createOffer();
+  await peerConnection.setLocalDescription(offer);
+
+  socket.emit("offer", { code: currentCode, offer });
+
+  log("📨", "Offer sent");
+}
+
+//
+// ──────────────────────────────────────────────
+// 🔌 SOCKET EVENTS
+// ──────────────────────────────────────────────
+//
 socket.on("connect", () => {
-  console.log("Connected");
-  socket.emit("agent-ready"); // 🔥 register as agent
+  log("🔌", "Connected");
+  socket.emit("agent-ready");
 });
 
 socket.on("generate-code-for-viewer", () => {
   currentCode = generateCode();
 
-  console.log("\n  ┌──────────────────────────┐");
-  console.log(`  │   CODE :  ${currentCode}         │`);
-  console.log("  └──────────────────────────┘\n");
+  console.log(`\nCODE: ${currentCode}\n`);
 
   socket.emit("register-host", { code: currentCode });
 });
-
-// socket.on("request-code", () => {
-//   waitingViewers.push(socket.id);
-
-//   const agentId = agents[0]; // pick first available agent
-
-//   if (agentId) {
-//     io.to(agentId).emit("generate-code-for-viewer");
-//   } else {
-//     socket.emit("error", "No agent available");
-//   }
-// });
 
 socket.on("register-success", ({ code }) => {
   currentCode = code;
-
-  console.log("\n  ┌──────────────────────────┐");
-  console.log(`  │   CODE :  ${code}         │`);
-  console.log("  └──────────────────────────┘\n");
-
-  log("📋", `Registered | Code: ${code}`);
+  log("📋", `Registered ${code}`);
 });
 
-socket.on("register-error", ({ message }) => {
-  log("❌", `Error: ${message}`);
-  currentCode = generateCode();
-  socket.emit("register-host", { code: currentCode });
+socket.on("viewer-joined", async () => {
+  log("👀", "Viewer connected");
+  await setupWebRTC();
 });
 
-socket.on("viewer-joined", ({ viewerId }) =>
-  log("👀", `Viewer connected: ${viewerId}`),
-);
-socket.on("viewer-left", ({ message }) => log("👋", message));
-socket.on("session-ended", ({ message }) => log("🔴", message));
-socket.on("disconnect", (reason) => log("⚠️ ", `Disconnected: ${reason}`));
-socket.on("reconnect", (n) => log("🔁", `Reconnected after ${n} attempt(s)`));
+socket.on("answer", async ({ answer }) => {
+  await peerConnection.setRemoteDescription(
+    new RTCSessionDescription(answer)
+  );
+  log("✅", "Answer received");
+});
 
-// ── Control events ────────────────────────────────────────────
+socket.on("ice-candidate", async ({ candidate }) => {
+  if (peerConnection) {
+    await peerConnection.addIceCandidate(
+      new RTCIceCandidate(candidate)
+    );
+  }
+});
+
+socket.on("viewer-left", () => {
+  log("👋", "Viewer left");
+  stopCapture();
+});
+
+socket.on("disconnect", () => {
+  log("⚠️", "Disconnected");
+  stopCapture();
+});
+
+//
+// ──────────────────────────────────────────────
+// 🎮 CONTROL EVENTS
+// ──────────────────────────────────────────────
+//
 socket.on("control-event", async (event) => {
-  if (!event?.type) return;
-
   try {
     switch (event.type) {
       case "mouse_move":
@@ -136,83 +263,18 @@ socket.on("control-event", async (event) => {
         break;
 
       case "click":
-        if (event.x !== undefined)
-          await mouse.move(straightTo(new Point(event.x, event.y)));
         await mouse.click(Button.LEFT);
         break;
 
       case "right_click":
-        if (event.x !== undefined)
-          await mouse.move(straightTo(new Point(event.x, event.y)));
         await mouse.click(Button.RIGHT);
         break;
-
-      case "double_click":
-        if (event.x !== undefined)
-          await mouse.move(straightTo(new Point(event.x, event.y)));
-        await mouse.doubleClick(Button.LEFT);
-        break;
-
-      case "scroll": {
-        const steps = 3;
-        const dy = event.dy || 0;
-        const dx = event.dx || 0;
-        if (dy > 0) await mouse.scrollDown(steps);
-        else if (dy < 0) await mouse.scrollUp(steps);
-        if (dx > 0) await mouse.scrollRight(steps);
-        else if (dx < 0) await mouse.scrollLeft(steps);
-        break;
-      }
 
       case "type":
         if (event.text) await keyboard.type(event.text);
         break;
-
-      case "key_tap": {
-        // Look up in KEY_MAP first, then try Key[A-Z/0-9] for combos like Ctrl+C
-        let key = KEY_MAP[event.key];
-        if (!key && event.key.length === 1) key = Key[event.key.toUpperCase()];
-        if (!key) {
-          log("⚠️ ", `Unmapped key: "${event.key}"`);
-          break;
-        }
-
-        const mods = [];
-        if (event.ctrlKey || event.metaKey) mods.push(Key.LeftControl);
-        if (event.altKey) mods.push(Key.LeftAlt);
-        if (event.shiftKey) mods.push(Key.LeftShift);
-
-        await keyboard.pressKey(...mods, key);
-        await keyboard.releaseKey(...mods, key);
-        break;
-      }
-
-      case "mouse_down":
-        await mouse.pressButton(
-          event.button === 2 ? Button.RIGHT : Button.LEFT,
-        );
-        break;
-
-      case "mouse_up":
-        await mouse.releaseButton(
-          event.button === 2 ? Button.RIGHT : Button.LEFT,
-        );
-        break;
-
-      default:
-        log("❓", `Unknown event: ${event.type}`);
     }
   } catch (err) {
-    log("💥", `[${event.type}] ${err.message}`);
+    console.error("Control error:", err.message);
   }
-});
-
-// ── Shutdown ──────────────────────────────────────────────────
-process.on("SIGINT", () => {
-  socket.disconnect();
-  process.exit(0);
-});
-process.on("SIGTERM", () => {
-  socket.disconnect();
-  process.exit(0);
 });
