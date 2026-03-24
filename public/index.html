@@ -609,6 +609,13 @@
             muted
             tabindex="0"
           ></video>
+
+          <!-- 🔥 ADD THIS FOR MOBILE -->
+          <input
+            id="mobileKeyboard"
+            style="position: absolute; opacity: 0; pointer-events: none"
+          />
+
           <div id="cursor"></div>
           <div class="placeholder" id="placeholder">
             <svg
@@ -641,6 +648,7 @@
     <script>
       const menuBtn = document.getElementById("menuToggle");
       const sidebar = document.querySelector(".sidebar");
+      const remoteVideo = document.getElementById("remoteVideo");
 
       menuBtn.addEventListener("click", () => {
         sidebar.classList.toggle("open");
@@ -653,6 +661,29 @@
         ) {
           sidebar.classList.remove("open");
         }
+      });
+
+      const mobileInput = document.getElementById("mobileKeyboard");
+
+      remoteVideo.addEventListener("click", () => {
+        mobileInput.focus();
+      });
+
+      mobileInput.addEventListener("input", (e) => {
+        const value = mobileInput.value;
+
+        if (!value) return;
+
+        sendControl({
+          type: "type",
+          text: value,
+        });
+
+        mobileInput.value = ""; // 🔥 reset after sending
+      });
+
+      remoteVideo.addEventListener("touchstart", () => {
+        mobileInput.focus();
       });
     </script>
   </body>
