@@ -651,14 +651,14 @@
       const remoteVideo = document.getElementById("remoteVideo");
 
       menuBtn.addEventListener("click", () => {
+        e.stopPropagation(); // 🔥 prevent closing instantly
         sidebar.classList.toggle("open");
       });
+
       document.addEventListener("click", (e) => {
-        if (
-          window.innerWidth <= 768 &&
-          !sidebar.contains(e.target) &&
-          !menuBtn.contains(e.target)
-        ) {
+        if (window.innerWidth > 768) return;
+
+        if (!sidebar.contains(e.target) && !menuBtn.contains(e.target)) {
           sidebar.classList.remove("open");
         }
       });
@@ -682,8 +682,13 @@
         mobileInput.value = ""; // 🔥 reset after sending
       });
 
-      remoteVideo.addEventListener("touchstart", () => {
+      remoteVideo.addEventListener("touchstart", (e) => {
+        e.stopPropagation(); // 🔥 IMPORTANT
         mobileInput.focus();
+      });
+
+      remoteVideo.addEventListener("touchmove", (e) => {
+        e.stopPropagation();
       });
     </script>
   </body>
