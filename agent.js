@@ -41,7 +41,7 @@ const KEY_MAP = {
 };
 
 // ── Socket ────────────────────────────────────
-const SERVER = process.env.SERVER_URL || "http://localhost:3000";
+const SERVER = "https://anydeskclone-iisg.onrender.com" || "http://localhost:3000";
 
 const socket = io(SERVER);
 

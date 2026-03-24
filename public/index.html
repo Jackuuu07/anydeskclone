@@ -1,433 +1,659 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RemoteDesk</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RemoteDesk</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
 
-    :root {
-      --bg: #0f1117;
-      --surface: #1a1d27;
-      --surface2: #22263a;
-      --border: #2e3348;
-      --accent: #4f8ef7;
-      --accent-dim: #2a4a8a;
-      --text: #e8eaf6;
-      --muted: #6b7280;
-      --green: #22c55e;
-      --yellow: #f59e0b;
-      --red: #ef4444;
-      --radius: 12px;
-    }
+      :root {
+        --bg: #0f1117;
+        --surface: #1a1d27;
+        --surface2: #22263a;
+        --border: #2e3348;
+        --accent: #4f8ef7;
+        --accent-dim: #2a4a8a;
+        --text: #e8eaf6;
+        --muted: #6b7280;
+        --green: #22c55e;
+        --yellow: #f59e0b;
+        --red: #ef4444;
+        --radius: 12px;
+      }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
 
-    /* ── Top bar ── */
-    .topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 14px 24px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: -0.3px;
-    }
-    .logo svg { color: var(--accent); }
+      /* ── Top bar ── */
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 24px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: -0.3px;
+      }
+      .logo svg {
+        color: var(--accent);
+      }
 
-    .status-bar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 13px;
-      color: var(--muted);
-    }
-    .status-dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: var(--muted);
-      transition: background 0.3s;
-    }
-    .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
-    .status-dot.pending   { background: var(--yellow); animation: pulse 1s infinite; }
-    .status-dot.error     { background: var(--red); }
-    @keyframes pulse {
-      0%,100% { opacity: 1; } 50% { opacity: 0.3; }
-    }
+      .status-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted);
+        transition: background 0.3s;
+      }
+      .status-dot.connected {
+        background: var(--green);
+        box-shadow: 0 0 6px var(--green);
+      }
+      .status-dot.pending {
+        background: var(--yellow);
+        animation: pulse 1s infinite;
+      }
+      .status-dot.error {
+        background: var(--red);
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+      }
 
-    /* ── Main layout ── */
-    .main {
-      display: flex;
-      flex: 1;
-      overflow: hidden;
-    }
+      /* ── Main layout ── */
+      .main {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+      }
 
-    /* ── Sidebar ── */
-    .sidebar {
-      width: 300px;
-      flex-shrink: 0;
-      background: var(--surface);
-      border-right: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      gap: 0;
-      overflow-y: auto;
-    }
+      /* ── Sidebar ── */
+      .sidebar {
+        width: 300px;
+        flex-shrink: 0;
+        background: var(--surface);
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        overflow-y: auto;
+      }
 
-    .sidebar-section {
-      padding: 20px;
-      border-bottom: 1px solid var(--border);
-    }
-    .sidebar-section:last-child { border-bottom: none; }
+      .sidebar-section {
+        padding: 20px;
+        border-bottom: 1px solid var(--border);
+      }
+      .sidebar-section:last-child {
+        border-bottom: none;
+      }
 
-    .section-label {
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      color: var(--muted);
-      margin-bottom: 14px;
-    }
+      .section-label {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--muted);
+        margin-bottom: 14px;
+      }
 
-    /* code display */
-    .code-display {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-    }
-    .code-value {
-      font-size: 26px;
-      font-weight: 800;
-      letter-spacing: 6px;
-      color: var(--accent);
-      font-variant-numeric: tabular-nums;
-    }
-    .code-value.empty { color: var(--muted); font-size: 20px; letter-spacing: 3px; }
+      /* code display */
+      .code-display {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .code-value {
+        font-size: 26px;
+        font-weight: 800;
+        letter-spacing: 6px;
+        color: var(--accent);
+        font-variant-numeric: tabular-nums;
+      }
+      .code-value.empty {
+        color: var(--muted);
+        font-size: 20px;
+        letter-spacing: 3px;
+      }
 
-    .icon-btn {
-      background: none;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--muted);
-      cursor: pointer;
-      padding: 6px;
-      display: grid;
-      place-items: center;
-      transition: all 0.2s;
-    }
-    .icon-btn:hover { color: var(--text); border-color: var(--accent); }
-    .icon-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+      .icon-btn {
+        background: none;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        cursor: pointer;
+        padding: 6px;
+        display: grid;
+        place-items: center;
+        transition: all 0.2s;
+      }
+      .icon-btn:hover {
+        color: var(--text);
+        border-color: var(--accent);
+      }
+      .icon-btn:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+      }
 
-    /* buttons */
-    .btn {
-      width: 100%;
-      padding: 11px 16px;
-      border-radius: 9px;
-      border: none;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-    }
-    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn-primary  { background: var(--accent); color: #fff; }
-    .btn-primary:hover:not(:disabled) { background: #3a7af5; }
-    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
-    .btn-secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-    .btn-danger { background: #2d1b1b; color: var(--red); border: 1px solid #5a2020; }
-    .btn-danger:hover:not(:disabled) { background: #3d2020; }
+      /* buttons */
+      .btn {
+        width: 100%;
+        padding: 11px 16px;
+        border-radius: 9px;
+        border: none;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      .btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: #fff;
+      }
+      .btn-primary:hover:not(:disabled) {
+        background: #3a7af5;
+      }
+      .btn-secondary {
+        background: var(--surface2);
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+      .btn-secondary:hover:not(:disabled) {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .btn-danger {
+        background: #2d1b1b;
+        color: var(--red);
+        border: 1px solid #5a2020;
+      }
+      .btn-danger:hover:not(:disabled) {
+        background: #3d2020;
+      }
 
-    .btn-row { display: flex; gap: 8px; }
-    .btn-row .btn { flex: 1; }
+      .btn-row {
+        display: flex;
+        gap: 8px;
+      }
+      .btn-row .btn {
+        flex: 1;
+      }
 
-    /* input */
-    .input-group { display: flex; gap: 8px; }
-    .code-input {
-      flex: 1;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 9px;
-      color: var(--text);
-      font-size: 20px;
-      font-weight: 700;
-      letter-spacing: 4px;
-      padding: 10px 14px;
-      text-align: center;
-      width: 100%;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    .code-input:focus { border-color: var(--accent); }
-    .code-input::placeholder { color: var(--muted); font-size: 14px; letter-spacing: 0; font-weight: 400; }
+      /* input */
+      .input-group {
+        display: flex;
+        gap: 8px;
+      }
+      .code-input {
+        flex: 1;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        color: var(--text);
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 4px;
+        padding: 10px 14px;
+        text-align: center;
+        width: 100%;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      .code-input:focus {
+        border-color: var(--accent);
+      }
+      .code-input::placeholder {
+        color: var(--muted);
+        font-size: 14px;
+        letter-spacing: 0;
+        font-weight: 400;
+      }
 
-    /* agent note */
-    .agent-note {
-      margin-top: 10px;
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      font-size: 12px;
-      color: var(--green);
-      background: rgba(34,197,94,0.07);
-      border: 1px solid rgba(34,197,94,0.2);
-      border-radius: 8px;
-      padding: 8px 12px;
-    }
-    .info-box {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 14px;
-      font-size: 13px;
-      color: var(--muted);
-      line-height: 1.6;
-    }
-    .info-box b { color: var(--text); }
+      /* agent note */
+      .agent-note {
+        margin-top: 10px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 12px;
+        color: var(--green);
+        background: rgba(34, 197, 94, 0.07);
+        border: 1px solid rgba(34, 197, 94, 0.2);
+        border-radius: 8px;
+        padding: 8px 12px;
+      }
+      .info-box {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 14px;
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+      .info-box b {
+        color: var(--text);
+      }
 
-    /* ── Video area ── */
-    .video-area {
-      flex: 1;
-      background: #080a0f;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-      overflow: hidden;
-    }
+      /* ── Video area ── */
+      .video-area {
+        flex: 1;
+        background: #080a0f;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+      }
 
-    .video-wrap {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
+      .video-wrap {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
 
-    #remoteVideo {
-      max-width: 100%;
-      max-height: 100%;
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      display: none;
-      cursor: none;
-      outline: none;
-    }
-    .video-wrap.active #remoteVideo { display: block; }
+      #remoteVideo {
+        max-width: 100%;
+        max-height: 100%;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: none;
+        cursor: none;
+        outline: none;
+      }
+      .video-wrap.active #remoteVideo {
+        display: block;
+      }
 
-    .placeholder {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 16px;
-      color: var(--muted);
-    }
-    .placeholder svg { opacity: 0.3; }
-    .placeholder p { font-size: 15px; }
-    .video-wrap.active .placeholder { display: none; }
+      .placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        color: var(--muted);
+      }
+      .placeholder svg {
+        opacity: 0.3;
+      }
+      .placeholder p {
+        font-size: 15px;
+      }
+      .video-wrap.active .placeholder {
+        display: none;
+      }
 
-    /* badges */
-    .live-badge {
-      position: absolute;
-      top: 16px;
-      left: 16px;
-      background: rgba(239,68,68,0.15);
-      border: 1px solid rgba(239,68,68,0.4);
-      color: #ef4444;
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 700;
-      display: none;
-      align-items: center;
-      gap: 6px;
-    }
-    .live-badge::before {
-      content: "";
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      background: #ef4444;
-      animation: pulse 1s infinite;
-    }
-    .video-wrap.active .live-badge { display: flex; }
+      /* badges */
+      .live-badge {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        background: rgba(239, 68, 68, 0.15);
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        color: #ef4444;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 700;
+        display: none;
+        align-items: center;
+        gap: 6px;
+      }
+      .live-badge::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #ef4444;
+        animation: pulse 1s infinite;
+      }
+      .video-wrap.active .live-badge {
+        display: flex;
+      }
 
-    .control-badge {
-      position: absolute;
-      bottom: 16px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(79,142,247,0.12);
-      border: 1px solid rgba(79,142,247,0.35);
-      color: var(--accent);
-      padding: 6px 16px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 600;
-      display: none;
-    }
-    .control-badge.show { display: block; }
+      .control-badge {
+        position: absolute;
+        bottom: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(79, 142, 247, 0.12);
+        border: 1px solid rgba(79, 142, 247, 0.35);
+        color: var(--accent);
+        padding: 6px 16px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        display: none;
+      }
+      .control-badge.show {
+        display: block;
+      }
 
-    /* custom cursor overlay */
-    #cursor {
-      position: absolute;
-      width: 16px; height: 16px;
-      border: 2px solid var(--accent);
-      border-radius: 50%;
-      pointer-events: none;
-      transform: translate(-50%, -50%);
-      display: none;
-      z-index: 10;
-      transition: transform 0.05s;
-    }
-    .video-wrap.active #cursor { display: block; }
+      /* custom cursor overlay */
+      #cursor {
+        position: absolute;
+        width: 16px;
+        height: 16px;
+        border: 2px solid var(--accent);
+        border-radius: 50%;
+        pointer-events: none;
+        transform: translate(-50%, -50%);
+        display: none;
+        z-index: 10;
+        transition: transform 0.05s;
+      }
+      .video-wrap.active #cursor {
+        display: block;
+      }
 
-    /* ── Toast ── */
-    .toast {
-      position: fixed;
-      bottom: 24px;
-      right: 24px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      color: var(--text);
-      padding: 10px 18px;
-      border-radius: 10px;
-      font-size: 13px;
-      transform: translateY(80px);
-      opacity: 0;
-      transition: all 0.25s;
-      z-index: 100;
-    }
-    .toast.show { transform: translateY(0); opacity: 1; }
-  </style>
-</head>
-<body>
+      /* ── Toast ── */
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 10px 18px;
+        border-radius: 10px;
+        font-size: 13px;
+        transform: translateY(80px);
+        opacity: 0;
+        transition: all 0.25s;
+        z-index: 100;
+      }
+      .toast.show {
+        transform: translateY(0);
+        opacity: 1;
+      }
 
-<!-- Top bar -->
-<div class="topbar">
-  <div class="logo">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="2" y="3" width="20" height="14" rx="2"/>
-      <path d="M8 21h8M12 17v4"/>
-      <circle cx="12" cy="10" r="2" fill="currentColor" stroke="none"/>
-    </svg>
-    RemoteDesk
-  </div>
-  <div class="status-bar">
-    <div class="status-dot" id="statusDot"></div>
-    <span id="status">Idle</span>
-  </div>
-</div>
+      /* Menu button */
+      .menu-btn {
+        display: none;
+        background: none;
+        border: 1px solid var(--border);
+        color: var(--text);
+        font-size: 18px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        cursor: pointer;
+      }
 
-<!-- Main -->
-<div class="main">
+      /* MOBILE MODE */
+      @media (max-width: 768px) {
+        .menu-btn {
+          display: block;
+        }
 
-  <!-- Sidebar -->
-  <div class="sidebar">
+        .main {
+          flex-direction: column;
+        }
 
-    <!-- My code (host/agent displays here) -->
-    <div class="sidebar-section">
-      <div class="section-label">Your Session Code</div>
-      <div class="code-display">
-        <div class="code-value empty" id="myCode">— — — — — —</div>
-        <button class="icon-btn" id="copyBtn" title="Copy code" style="display:none">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        .sidebar {
+          position: fixed;
+          top: 60px;
+          left: 0;
+          width: 100%;
+          max-height: 60vh;
+          overflow-y: auto;
+
+          background: var(--surface);
+          z-index: 20;
+
+          transform: translateY(-120%);
+          transition: transform 0.3s ease;
+        }
+
+        .sidebar.open {
+          transform: translateY(0);
+        }
+
+        .video-area {
+          height: calc(100vh - 60px);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Top bar -->
+    <div class="topbar">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <!-- 🔥 MENU BUTTON -->
+        <button id="menuToggle" class="menu-btn">☰</button>
+        <div class="logo">
+          <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="2" y="3" width="20" height="14" rx="2" />
+            <path d="M8 21h8M12 17v4" />
+            <circle cx="12" cy="10" r="2" fill="currentColor" stroke="none" />
           </svg>
-        </button>
+          RemoteDesk
+        </div>
       </div>
-      <div style="height:12px"></div>
-      <button class="btn btn-secondary" id="createBtn">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-        Get Code from Agent
-      </button>
-      <div class="agent-note" id="agentNote" style="display:none">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        Agent is sharing automatically when a viewer connects.
+      <div class="status-bar">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="status">Idle</span>
       </div>
     </div>
 
-    <!-- Join -->
-    <div class="sidebar-section">
-      <div class="section-label">Connect to Remote</div>
-      <input
-        class="code-input"
-        id="codeInput"
-        type="text"
-        inputmode="numeric"
-        maxlength="6"
-        placeholder="Enter 6-digit code"
-        autocomplete="off"
-      />
-      <div style="height:10px"></div>
-      <button class="btn btn-primary" id="joinBtn">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>
-        </svg>
-        Connect
-      </button>
-    </div>
+    <!-- Main -->
+    <div class="main">
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <!-- My code (host/agent displays here) -->
+        <div class="sidebar-section">
+          <div class="section-label">Your Session Code</div>
+          <div class="code-display">
+            <div class="code-value empty" id="myCode">— — — — — —</div>
+            <button
+              class="icon-btn"
+              id="copyBtn"
+              title="Copy code"
+              style="display: none"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path
+                  d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                />
+              </svg>
+            </button>
+          </div>
+          <div style="height: 12px"></div>
+          <button class="btn btn-secondary" id="createBtn">
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="16" />
+              <line x1="8" y1="12" x2="16" y2="12" />
+            </svg>
+            Get Code from Agent
+          </button>
+          <div class="agent-note" id="agentNote" style="display: none">
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            Agent is sharing automatically when a viewer connects.
+          </div>
+        </div>
 
-    <!-- Info -->
-    <div class="sidebar-section">
-      <div class="info-box">
-        <b>How it works:</b><br>
-        1. Run <b>agent.js</b> on the host machine.<br>
-        2. Click <b>Get Code</b> — the agent generates a session code.<br>
-        3. Share that code with the viewer.<br>
-        4. Viewer enters the code and connects.<br>
-        5. Full mouse &amp; keyboard control is enabled.
+        <!-- Join -->
+        <div class="sidebar-section">
+          <div class="section-label">Connect to Remote</div>
+          <input
+            class="code-input"
+            id="codeInput"
+            type="text"
+            inputmode="numeric"
+            maxlength="6"
+            placeholder="Enter 6-digit code"
+            autocomplete="off"
+          />
+          <div style="height: 10px"></div>
+          <button class="btn btn-primary" id="joinBtn">
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+              <polyline points="10 17 15 12 10 7" />
+              <line x1="15" y1="12" x2="3" y2="12" />
+            </svg>
+            Connect
+          </button>
+        </div>
+
+        <!-- Info -->
+        <div class="sidebar-section">
+          <div class="info-box">
+            <b>How it works:</b><br />
+            1. Run <b>agent.js</b> on the host machine.<br />
+            2. Click <b>Get Code</b> — the agent generates a session code.<br />
+            3. Share that code with the viewer.<br />
+            4. Viewer enters the code and connects.<br />
+            5. Full mouse &amp; keyboard control is enabled.
+          </div>
+        </div>
+      </div>
+
+      <!-- Video -->
+      <div class="video-area">
+        <div class="video-wrap" id="videoWrap">
+          <video
+            id="remoteVideo"
+            autoplay
+            playsinline
+            muted
+            tabindex="0"
+          ></video>
+          <div id="cursor"></div>
+          <div class="placeholder" id="placeholder">
+            <svg
+              width="64"
+              height="64"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <path d="M8 21h8M12 17v4" />
+            </svg>
+            <p>No stream connected</p>
+          </div>
+          <div class="live-badge">LIVE</div>
+          <div class="control-badge" id="controlBadge">
+            ⌨ CONTROL MODE ACTIVE
+          </div>
+        </div>
       </div>
     </div>
 
-  </div>
+    <div class="toast" id="toast"></div>
 
-  <!-- Video -->
-  <div class="video-area">
-    <div class="video-wrap" id="videoWrap">
-      <video id="remoteVideo" autoplay playsinline muted tabindex="0"></video>
-      <div id="cursor"></div>
-      <div class="placeholder" id="placeholder">
-        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
-        </svg>
-        <p>No stream connected</p>
-      </div>
-      <div class="live-badge">LIVE</div>
-      <div class="control-badge" id="controlBadge">⌨ CONTROL MODE ACTIVE</div>
-    </div>
-  </div>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="./app.js"></script>
+    <script>
+      const menuBtn = document.getElementById("menuToggle");
+      const sidebar = document.querySelector(".sidebar");
 
-</div>
-
-<div class="toast" id="toast"></div>
-
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="./app.js"></script>
-</body>
+      menuBtn.addEventListener("click", () => {
+        sidebar.classList.toggle("open");
+      });
+      document.addEventListener("click", (e) => {
+        if (
+          window.innerWidth <= 768 &&
+          !sidebar.contains(e.target) &&
+          !menuBtn.contains(e.target)
+        ) {
+          sidebar.classList.remove("open");
+        }
+      });
+    </script>
+  </body>
 </html>
