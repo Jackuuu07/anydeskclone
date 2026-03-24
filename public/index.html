@@ -648,9 +648,9 @@
     <script>
       const menuBtn = document.getElementById("menuToggle");
       const sidebar = document.querySelector(".sidebar");
-      const remoteVideo = document.getElementById("remoteVideo");
+      <!-- const remoteVideo = document.getElementById("remoteVideo"); -->
 
-      menuBtn.addEventListener("click", () => {
+      menuBtn.addEventListener("click", (e) => {
         e.stopPropagation(); // 🔥 prevent closing instantly
         sidebar.classList.toggle("open");
       });
