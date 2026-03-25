@@ -3,7 +3,7 @@ const {
   RTCPeerConnection,
   RTCSessionDescription,
   RTCIceCandidate,
-  nonstandard: { RTCVideoSource },
+  nonstandard: { RTCVideoSource, RTCVideoSink },
 } = require("@roamhq/wrtc");
 
 const screenshot = require("screenshot-desktop");
@@ -18,40 +18,24 @@ const {
   straightTo,
 } = require("@nut-tree-fork/nut-js");
 
-// ── nut.js config ─────────────────────────────
-mouse.config.mouseSpeed = 9999;
-mouse.config.autoDelayMs = 0;
-keyboard.config.autoDelayMs = 0;
-
-// ── Key map ───────────────────────────────────
-const KEY_MAP = {
-  Backspace: Key.Backspace,
-  Tab: Key.Tab,
-  Enter: Key.Return,
-  Escape: Key.Escape,
-  Delete: Key.Delete,
-  ArrowLeft: Key.Left,
-  ArrowRight: Key.Right,
-  ArrowUp: Key.Up,
-  ArrowDown: Key.Down,
-  " ": Key.Space,
-  Control: Key.LeftControl,
-  Alt: Key.LeftAlt,
-  Shift: Key.LeftShift,
-};
-
-// ── Socket ────────────────────────────────────
-const SERVER = "https://anydeskclone-iisg.onrender.com" || "http://localhost:3000";
+// ── CONFIG ─────────────────────────────
+const SERVER =
+  process.env.NODE_ENV === "production"
+    ? "https://anydeskclone-iisg.onrender.com"
+    : "http://localhost:3000";
 
 const socket = io(SERVER);
 
-// ── State ─────────────────────────────────────
+let mode = process.argv[2]; // share / connect
+let targetCode = process.argv[3];
+
 let currentCode = null;
 let peerConnection = null;
 let videoSource = null;
+let videoSink = null;
 let capturing = false;
 
-// ── Utils ─────────────────────────────────────
+// ── UTILS ─────────────────────────────
 function log(icon, msg) {
   console.log(`[${new Date().toLocaleTimeString()}] ${icon} ${msg}`);
 }
@@ -60,11 +44,7 @@ function generateCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-//
-// ──────────────────────────────────────────────
-// 🔥 MANUAL RGBA → I420 CONVERSION (WORKING)
-// ──────────────────────────────────────────────
-//
+// ── RGBA → I420 ───────────────────────
 function rgbaToI420Manual(rgba, width, height) {
   const ySize = width * height;
   const uvWidth = width >> 1;
@@ -82,22 +62,15 @@ function rgbaToI420Manual(rgba, width, height) {
   for (let j = 0; j < height; j++) {
     for (let i = 0; i < width; i++) {
       const idx = (j * width + i) * 4;
-
       const r = rgba[idx];
       const g = rgba[idx + 1];
       const b = rgba[idx + 2];
 
-      // Y
-      yPlane[yIndex++] =
-        (0.257 * r + 0.504 * g + 0.098 * b + 16) & 0xff;
+      yPlane[yIndex++] = (0.257 * r + 0.504 * g + 0.098 * b + 16) & 0xff;
 
-      // UV (subsampled)
       if ((j & 1) === 0 && (i & 1) === 0) {
-        uPlane[uIndex++] =
-          (-0.148 * r - 0.291 * g + 0.439 * b + 128) & 0xff;
-
-        vPlane[vIndex++] =
-          (0.439 * r - 0.368 * g - 0.071 * b + 128) & 0xff;
+        uPlane[uIndex++] = (-0.148 * r - 0.291 * g + 0.439 * b + 128) & 0xff;
+        vPlane[vIndex++] = (0.439 * r - 0.368 * g - 0.071 * b + 128) & 0xff;
       }
     }
   }
@@ -105,11 +78,7 @@ function rgbaToI420Manual(rgba, width, height) {
   return Buffer.concat([yPlane, uPlane, vPlane]);
 }
 
-//
-// ──────────────────────────────────────────────
-// 🎥 CAPTURE LOOP
-// ──────────────────────────────────────────────
-//
+// ── CAPTURE LOOP ──────────────────────
 async function captureLoop() {
   if (!capturing) return;
 
@@ -117,144 +86,195 @@ async function captureLoop() {
     const img = await screenshot({ format: "png" });
 
     const { data, info } = await sharp(img)
-      .resize(1280, 720, { fit: "fill" })
+      .resize(960, 540)
       .ensureAlpha()
       .raw()
       .toBuffer({ resolveWithObject: true });
 
-    const w = info.width;
-    const h = info.height;
-
-    if (data.length !== w * h * 4) {
-      console.error("❌ Invalid RGBA frame");
-      return;
-    }
-
-    // 🔥 Convert to I420
-    const i420 = rgbaToI420Manual(data, w, h);
-
-    if (!videoSource) return;
+    const frame = rgbaToI420Manual(data, info.width, info.height);
 
     videoSource.onFrame({
-      width: w,
-      height: h,
-      data: i420,
+      width: info.width,
+      height: info.height,
+      data: frame,
     });
-
   } catch (err) {
-    console.error("💥 Capture error:", err.message);
+    console.error("Capture error:", err.message);
   }
 
-  if (capturing) {
-    setTimeout(captureLoop, 1000 / 15);
-  }
+  setTimeout(captureLoop, 1000 / 15);
 }
 
 function startCapture() {
-  if (capturing) return;
   capturing = true;
-  log("🎥", "Screen capture started");
   captureLoop();
 }
 
-function stopCapture() {
-  capturing = false;
-  log("🛑", "Capture stopped");
-}
+// ── SHARE MODE ────────────────────────
+async function startShare() {
+  currentCode = generateCode();
+  console.log(`\n🟢 SHARE MODE\nCODE: ${currentCode}\n`);
 
-//
-// ──────────────────────────────────────────────
-// 🌐 WebRTC SETUP
-// ──────────────────────────────────────────────
-//
-async function setupWebRTC() {
-  if (peerConnection) {
-    peerConnection.close();
-    peerConnection = null;
-  }
+  socket.emit("register-host", { code: currentCode });
 
   peerConnection = new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      {
+        urls: "stun:stun.relay.metered.ca:80",
+      },
+      {
+        urls: "turn:global.relay.metered.ca:80",
+        username: "c5c28fb864e93dcb12d5e929",
+        credential: "TaVYwBAUxvuarWT4",
+      },
+      {
+        urls: "turn:global.relay.metered.ca:80?transport=tcp",
+        username: "c5c28fb864e93dcb12d5e929",
+        credential: "TaVYwBAUxvuarWT4",
+      },
+      {
+        urls: "turn:global.relay.metered.ca:443",
+        username: "c5c28fb864e93dcb12d5e929",
+        credential: "TaVYwBAUxvuarWT4",
+      },
+      {
+        urls: "turns:global.relay.metered.ca:443?transport=tcp",
+        username: "c5c28fb864e93dcb12d5e929",
+        credential: "TaVYwBAUxvuarWT4",
+      },
+    ],
   });
+
+  peerConnection.oniceconnectionstatechange = () => {
+    console.log("ICE:", peerConnection.iceConnectionState);
+  };
+
+  peerConnection.onconnectionstatechange = () => {
+    console.log("AGENT STATE:", peerConnection.connectionState);
+  };
 
   videoSource = new RTCVideoSource();
   const track = videoSource.createTrack();
   peerConnection.addTrack(track);
 
   peerConnection.onicecandidate = ({ candidate }) => {
-    if (candidate && currentCode) {
+    if (candidate) {
       socket.emit("ice-candidate", { code: currentCode, candidate });
     }
   };
 
   startCapture();
 
-  const offer = await peerConnection.createOffer();
-  await peerConnection.setLocalDescription(offer);
+  socket.on("viewer-joined", async () => {
+    log("👀", "Viewer joined");
 
-  socket.emit("offer", { code: currentCode, offer });
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
 
-  log("📨", "Offer sent");
+    socket.emit("offer", { code: currentCode, offer });
+  });
 }
 
-//
-// ──────────────────────────────────────────────
-// 🔌 SOCKET EVENTS
-// ──────────────────────────────────────────────
-//
+// ── CONNECT MODE ──────────────────────
+async function startConnect(code) {
+  currentCode = code;
+
+  console.log(`\n🔵 CONNECT MODE\nConnecting to: ${code}\n`);
+
+  peerConnection = new RTCPeerConnection({
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      {
+        urls: "stun:stun.relay.metered.ca:80",
+      },
+      {
+        urls: "turn:global.relay.metered.ca:80",
+        username: "c5c28fb864e93dcb12d5e929",
+        credential: "TaVYwBAUxvuarWT4",
+      },
+      {
+        urls: "turn:global.relay.metered.ca:80?transport=tcp",
+        username: "c5c28fb864e93dcb12d5e929",
+        credential: "TaVYwBAUxvuarWT4",
+      },
+      {
+        urls: "turn:global.relay.metered.ca:443",
+        username: "c5c28fb864e93dcb12d5e929",
+        credential: "TaVYwBAUxvuarWT4",
+      },
+      {
+        urls: "turns:global.relay.metered.ca:443?transport=tcp",
+        username: "c5c28fb864e93dcb12d5e929",
+        credential: "TaVYwBAUxvuarWT4",
+      },
+    ],
+  });
+
+  peerConnection.oniceconnectionstatechange = () => {
+    console.log("ICE:", peerConnection.iceConnectionState);
+  };
+
+  peerConnection.onconnectionstatechange = () => {
+    console.log("AGENT STATE:", peerConnection.connectionState);
+  };
+
+  peerConnection.ontrack = (event) => {
+    const track = event.track;
+
+    videoSink = new RTCVideoSink(track);
+
+    videoSink.onframe = ({ frame }) => {
+      // You can display or process frames here
+      // For now just log
+      process.stdout.write(".");
+    };
+  };
+
+  peerConnection.onicecandidate = ({ candidate }) => {
+    if (candidate) {
+      socket.emit("ice-candidate", { code, candidate });
+    }
+  };
+
+  socket.emit("join-session", { code });
+}
+
+// ── SOCKET EVENTS ─────────────────────
 socket.on("connect", () => {
   log("🔌", "Connected");
-  socket.emit("agent-ready");
-});
 
-socket.on("generate-code-for-viewer", () => {
-  currentCode = generateCode();
-
-  console.log(`\nCODE: ${currentCode}\n`);
-
-  socket.emit("register-host", { code: currentCode });
-});
-
-socket.on("register-success", ({ code }) => {
-  currentCode = code;
-  log("📋", `Registered ${code}`);
-});
-
-socket.on("viewer-joined", async () => {
-  log("👀", "Viewer connected");
-  await setupWebRTC();
-});
-
-socket.on("answer", async ({ answer }) => {
-  await peerConnection.setRemoteDescription(
-    new RTCSessionDescription(answer)
-  );
-  log("✅", "Answer received");
-});
-
-socket.on("ice-candidate", async ({ candidate }) => {
-  if (peerConnection) {
-    await peerConnection.addIceCandidate(
-      new RTCIceCandidate(candidate)
-    );
+  if (mode === "share") startShare();
+  else if (mode === "connect") startConnect(targetCode);
+  else {
+    console.log("Usage:");
+    console.log("node agent.js share");
+    console.log("node agent.js connect <CODE>");
   }
 });
 
-socket.on("viewer-left", () => {
-  log("👋", "Viewer left");
-  stopCapture();
+socket.on("offer", async ({ offer }) => {
+  await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+  const answer = await peerConnection.createAnswer();
+  await peerConnection.setLocalDescription(answer);
+
+  socket.emit("answer", { code: currentCode, answer });
 });
 
-socket.on("disconnect", () => {
-  log("⚠️", "Disconnected");
-  stopCapture();
+socket.on("answer", async ({ answer }) => {
+  await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
 });
 
-//
-// ──────────────────────────────────────────────
-// 🎮 CONTROL EVENTS
-// ──────────────────────────────────────────────
-//
+socket.on("ice-candidate", async ({ candidate }) => {
+  try {
+    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+  } catch (e) {
+    console.error(e);
+  }
+});
+
+// ── CONTROL EVENTS ────────────────────
 socket.on("control-event", async (event) => {
   try {
     switch (event.type) {

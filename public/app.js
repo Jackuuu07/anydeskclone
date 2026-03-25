@@ -28,7 +28,32 @@ let currentCode = null;
 let isHost = false;
 
 const rtcConfig = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    {
+      urls: "stun:stun.relay.metered.ca:80",
+    },
+    {
+      urls: "turn:global.relay.metered.ca:80",
+      username: "c5c28fb864e93dcb12d5e929",
+      credential: "TaVYwBAUxvuarWT4",
+    },
+    {
+      urls: "turn:global.relay.metered.ca:80?transport=tcp",
+      username: "c5c28fb864e93dcb12d5e929",
+      credential: "TaVYwBAUxvuarWT4",
+    },
+    {
+      urls: "turn:global.relay.metered.ca:443",
+      username: "c5c28fb864e93dcb12d5e929",
+      credential: "TaVYwBAUxvuarWT4",
+    },
+    {
+      urls: "turns:global.relay.metered.ca:443?transport=tcp",
+      username: "c5c28fb864e93dcb12d5e929",
+      credential: "TaVYwBAUxvuarWT4",
+    },
+  ],
 };
 
 // ── UI helpers ────────────────────────────────────────────────
@@ -78,6 +103,9 @@ async function createPeerConnection() {
 
   peerConnection = new RTCPeerConnection(rtcConfig);
 
+  // 🔥 ADD THIS LINE
+  peerConnection.addTransceiver("video", { direction: "recvonly" });
+
   peerConnection.onicecandidate = ({ candidate }) => {
     if (candidate && currentCode) {
       socket.emit("ice-candidate", { code: currentCode, candidate });
@@ -85,11 +113,14 @@ async function createPeerConnection() {
   };
 
   peerConnection.ontrack = (e) => {
+    console.log("🎥 TRACK RECEIVED"); // debug
+
     if (!remoteStream) {
       remoteStream = new MediaStream();
       remoteVideo.srcObject = remoteStream;
     }
     if (!remoteStream.getTracks().find((t) => t.id === e.track.id)) {
+      console.log("Track added to peer");
       remoteStream.addTrack(e.track);
     }
     // Explicitly play — autoplay alone is unreliable when srcObject is set dynamically
@@ -100,6 +131,7 @@ async function createPeerConnection() {
   };
 
   peerConnection.onconnectionstatechange = () => {
+    console.log("VIEWER STATE:", peerConnection.connectionState);
     if (!peerConnection) return;
     const s = peerConnection.connectionState;
     if (s === "connected") setStatus("✅ Connected", "connected");
@@ -237,9 +269,11 @@ function detachControlListeners() {
 
 // ── Button handlers ───────────────────────────────────────────
 createBtn.addEventListener("click", () => {
-  createBtn.disabled = true;
-  socket.emit("request-code");
-  setStatus("⏳ Requesting code from agent…", "pending");
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+  socket.emit("register-host", { code });
+
+  setStatus("⏳ Creating session...", "pending");
 });
 
 // Share screen is handled entirely by agent.js — no browser action needed
@@ -339,6 +373,7 @@ socket.on("join-success", async ({ code }) => {
 socket.on("join-error", ({ message }) => setStatus("❌ " + message, "error"));
 
 socket.on("offer", async ({ offer }) => {
+  console.log("📩 OFFER RECEIVED"); // ADD THIS
   try {
     await createPeerConnection();
     await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
